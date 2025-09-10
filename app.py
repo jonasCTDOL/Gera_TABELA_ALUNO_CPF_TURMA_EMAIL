@@ -12,7 +12,6 @@ from typing import Optional, List, Tuple # Importa tipos para anotações de tip
 # --- Constantes ---
 # Definir constantes para nomes de colunas e arquivos melhora a manutenibilidade.
 COLUMNS = ['GRUPO', 'CPF', 'NOME']
-COLUMNS = ['GRUPO', 'CPF', 'NOME', 'EMAIL']
 OUTPUT_FILENAME = "dados_extraidos.csv"
 
 # --- Padrões de Expressão Regular ---
@@ -22,10 +21,6 @@ OUTPUT_FILENAME = "dados_extraidos.csv"
 GRUPO_PATTERN = re.compile(r'^([\w-]+)\t')
 # r'([^,]+?)\s*\.\s*\(\s*(\d+),': Captura NOME e CPF em pares.
 NOME_CPF_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+),')
-# r'([^,]+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^)]+))?\)'
-# Captura NOME, CPF e um EMAIL opcional.
-# Assume o formato: NOME . (CPF) ou NOME . (CPF, email)
-DATA_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^)]+))?\)')
 
 # --- Configurações da página Streamlit ---
 # Define as configurações iniciais da página web, como o título que aparece na aba do navegador
@@ -39,7 +34,6 @@ st.title("Processador de Arquivo CIAI")
 st.markdown("""
     Esta aplicação processa arquivos de texto no formato específico CIAI,
     extraindo informações de GRUPO, CPF e NOME, formatando o CPF e gerando um arquivo CSV.
-    extraindo informações de GRUPO, CPF, NOME e EMAIL, formatando o CPF e gerando um arquivo CSV.
     Por favor, carregue o arquivo .txt para iniciar o processamento.
 """)
 
@@ -49,7 +43,6 @@ st.markdown("""
 def process_ciai_data(file_content: str) -> pd.DataFrame:
     """
     Processa o conteúdo de um arquivo de texto, extrai dados relevantes,
-    Processa o conteúdo de um arquivo de texto, extrai dados de GRUPO, NOME, CPF e EMAIL (opcional),
     formata o CPF e retorna um DataFrame pandas.
 
     Args:
@@ -62,7 +55,6 @@ def process_ciai_data(file_content: str) -> pd.DataFrame:
 
     # --- Extração dos Dados Usando Expressões Regulares ---
     extracted_data: List[Tuple[str, str, str]] = []
-    extracted_data: List[Tuple[str, str, str, str]] = []
 
     # Itera sobre cada linha lida do arquivo para processamento.
     for line in lines:
@@ -78,17 +70,10 @@ def process_ciai_data(file_content: str) -> pd.DataFrame:
             for nome_cpf_match in NOME_CPF_PATTERN.finditer(rest_of_line):
                 nome = nome_cpf_match.group(1).strip()
                 cpf = nome_cpf_match.group(2).strip()
-            # Encontra todas as ocorrências de NOME, CPF e EMAIL (opcional) no restante da linha.
-            for match in DATA_PATTERN.finditer(rest_of_line):
-                nome = match.group(1).strip()
-                cpf = match.group(2).strip()
-                # O grupo 3 (email) é opcional. Se não for encontrado, retorna None.
-                email = match.group(3).strip() if match.group(3) else ""
                 
                 # Formatação do CPF e adição à lista em um único passo
                 formatted_cpf = cpf.zfill(11)
                 extracted_data.append((grupo, formatted_cpf, nome))
-                extracted_data.append((grupo, formatted_cpf, nome, email))
 
     return pd.DataFrame(extracted_data, columns=COLUMNS)
 
