@@ -22,9 +22,10 @@ OUTPUT_FILENAME = "dados_extraidos.csv"
 GRUPO_PATTERN = re.compile(r'^([\w-]+)\t')
 # r'([^,]+?)\s*\.\s*\(\s*(\d+),': Captura NOME e CPF em pares.
 NOME_CPF_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+),')
-# r'([^,]+?)\s*\.\s*\(\s*(\d+),\s*([^)]+)\)': Captura NOME, CPF e EMAIL.
-# Assume o formato: NOME . (CPF, email)
-NOME_CPF_EMAIL_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+),\s*([^)]+)\)')
+# r'([^,]+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^)]+))?\)'
+# Captura NOME, CPF e um EMAIL opcional.
+# Assume o formato: NOME . (CPF) ou NOME . (CPF, email)
+DATA_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^)]+))?\)')
 
 # --- Configurações da página Streamlit ---
 # Define as configurações iniciais da página web, como o título que aparece na aba do navegador
@@ -48,7 +49,7 @@ st.markdown("""
 def process_ciai_data(file_content: str) -> pd.DataFrame:
     """
     Processa o conteúdo de um arquivo de texto, extrai dados relevantes,
-    Processa o conteúdo de um arquivo de texto, extrai dados de GRUPO, NOME, CPF e EMAIL,
+    Processa o conteúdo de um arquivo de texto, extrai dados de GRUPO, NOME, CPF e EMAIL (opcional),
     formata o CPF e retorna um DataFrame pandas.
 
     Args:
@@ -77,11 +78,12 @@ def process_ciai_data(file_content: str) -> pd.DataFrame:
             for nome_cpf_match in NOME_CPF_PATTERN.finditer(rest_of_line):
                 nome = nome_cpf_match.group(1).strip()
                 cpf = nome_cpf_match.group(2).strip()
-            # Encontra todas as ocorrências de NOME, CPF e EMAIL no restante da linha.
-            for match in NOME_CPF_EMAIL_PATTERN.finditer(rest_of_line):
+            # Encontra todas as ocorrências de NOME, CPF e EMAIL (opcional) no restante da linha.
+            for match in DATA_PATTERN.finditer(rest_of_line):
                 nome = match.group(1).strip()
                 cpf = match.group(2).strip()
-                email = match.group(3).strip()
+                # O grupo 3 (email) é opcional. Se não for encontrado, retorna None.
+                email = match.group(3).strip() if match.group(3) else ""
                 
                 # Formatação do CPF e adição à lista em um único passo
                 formatted_cpf = cpf.zfill(11)
