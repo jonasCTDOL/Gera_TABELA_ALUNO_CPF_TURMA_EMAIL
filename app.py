@@ -22,10 +22,9 @@ OUTPUT_FILENAME = "dados_extraidos.csv"
 GRUPO_PATTERN = re.compile(r'^([\w-]+)\t')
 # r'([^,]+?)\s*\.\s*\(\s*(\d+),': Captura NOME e CPF em pares.
 NOME_CPF_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+),')
-# r'(.+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^,)]*))?.*?\)'
-# Captura NOME, CPF e um EMAIL opcional, ignorando outros dados dentro dos parênteses.
-# Assume o formato: NOME . (CPF) ou NOME . (CPF, email, ...)
-DATA_PATTERN = re.compile(r'(.+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^,)]*))?.*?\)')
+# r'([^,]+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^,)]*))?.*?\)'
+# Captura NOME (sem vírgulas), CPF e um EMAIL opcional.
+DATA_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+)(?:,\s*([^,)]*))?.*?\)')
 
 # --- Configurações da página Streamlit ---
 # Define as configurações iniciais da página web, como o título que aparece na aba do navegador
@@ -79,13 +78,14 @@ def process_ciai_data(file_content: str) -> pd.DataFrame:
             for nome_cpf_match in NOME_CPF_PATTERN.finditer(rest_of_line):
                 nome = nome_cpf_match.group(1).strip()
                 cpf = nome_cpf_match.group(2).strip()
+                
             # Encontra todas as ocorrências de NOME, CPF e EMAIL (opcional) no restante da linha.
             for match in DATA_PATTERN.finditer(rest_of_line):
                 nome = match.group(1).strip()
                 cpf = match.group(2).strip()
                 # O grupo 3 (email) é opcional. Se não for encontrado, retorna None.
                 email = match.group(3).strip() if match.group(3) else ""
-                
+
                 # Formatação do CPF e adição à lista em um único passo
                 formatted_cpf = cpf.zfill(11)
                 extracted_data.append((grupo, formatted_cpf, nome))
