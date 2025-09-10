@@ -1,131 +1,147 @@
-import pandas as pd
-import argparse
-import sys
-import streamlit as st
+# -*- coding: utf-8 -*-
+"""
+Script Python para uma aplicação web com Streamlit para processar um arquivo de texto
+no formato específico CIAI.
+"""
 
-def gerar_tabela_alunos(arquivo_inscritos, arquivo_turmas, arquivo_saida):
-def gerar_tabela_alunos(arquivo_inscritos, arquivo_turmas):
+import streamlit as st # Importa a biblioteca principal do Streamlit para criar a interface web
+import pandas as pd # Importa a biblioteca pandas para manipulação e análise de dados tabulares (DataFrames)
+import re # Importa a biblioteca re para trabalhar com expressões regulares, usadas na extração de dados
+from typing import Optional, List, Tuple # Importa tipos para anotações de tipo
+
+# --- Constantes ---
+# Definir constantes para nomes de colunas e arquivos melhora a manutenibilidade.
+COLUMNS = ['GRUPO', 'CPF', 'NOME']
+COLUMNS = ['GRUPO', 'CPF', 'NOME', 'EMAIL']
+OUTPUT_FILENAME = "dados_extraidos.csv"
+
+# --- Padrões de Expressão Regular ---
+# Compilar os padrões de regex uma vez no nível do módulo melhora a performance,
+# pois evita a recompilação a cada chamada da função.
+# r'^([\w-]+)\t': Captura o GRUPO no início da linha, seguido por um TAB.
+GRUPO_PATTERN = re.compile(r'^([\w-]+)\t')
+# r'([^,]+?)\s*\.\s*\(\s*(\d+),': Captura NOME e CPF em pares.
+NOME_CPF_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+),')
+# r'([^,]+?)\s*\.\s*\(\s*(\d+),\s*([^)]+)\)': Captura NOME, CPF e EMAIL.
+# Assume o formato: NOME . (CPF, email)
+NOME_CPF_EMAIL_PATTERN = re.compile(r'([^,]+?)\s*\.\s*\(\s*(\d+),\s*([^)]+)\)')
+
+# --- Configurações da página Streamlit ---
+# Define as configurações iniciais da página web, como o título que aparece na aba do navegador
+# e o layout (wide usa a largura total da tela).
+st.set_page_config(page_title="Processador de Arquivo CIAI", layout="wide")
+
+# --- Título e Descrição da Aplicação na Interface ---
+# Adiciona um título principal à aplicação exibida na página web.
+st.title("Processador de Arquivo CIAI")
+# Adiciona um texto descritivo abaixo do título, explicando o propósito da aplicação.
+st.markdown("""
+    Esta aplicação processa arquivos de texto no formato específico CIAI,
+    extraindo informações de GRUPO, CPF e NOME, formatando o CPF e gerando um arquivo CSV.
+    extraindo informações de GRUPO, CPF, NOME e EMAIL, formatando o CPF e gerando um arquivo CSV.
+    Por favor, carregue o arquivo .txt para iniciar o processamento.
+""")
+
+
+# --- Função Principal de Processamento dos Dados ---
+# Define a função que contém a lógica para ler, extrair e formatar os dados do arquivo.
+def process_ciai_data(file_content: str) -> pd.DataFrame:
     """
-    Cruza dados de inscritos e turmas, incluindo o e-mail, e gera um arquivo CSV.
-    Cruza dados de inscritos e turmas a partir de arquivos CSV carregados.
+    Processa o conteúdo de um arquivo de texto, extrai dados relevantes,
+    Processa o conteúdo de um arquivo de texto, extrai dados de GRUPO, NOME, CPF e EMAIL,
+    formata o CPF e retorna um DataFrame pandas.
 
     Args:
-        arquivo_inscritos (str): Caminho para o arquivo CSV de inscritos.
-        arquivo_turmas (str): Caminho para o arquivo CSV de turmas.
-        arquivo_saida (str): Caminho para o arquivo CSV de saída.
-        arquivo_inscritos (UploadedFile): Arquivo CSV de inscritos carregado via Streamlit.
-        arquivo_turmas (UploadedFile): Arquivo CSV de turmas carregado via Streamlit.
+        file_content (str): Uma string contendo o conteúdo completo do arquivo de texto.
 
     Returns:
-        pandas.DataFrame: O DataFrame final com os dados combinados.
-
-    Raises:
-        KeyError: Se as colunas necessárias não forem encontradas nos arquivos.
-        Exception: Para outros erros de processamento.
+        pd.DataFrame: Um DataFrame pandas com os dados extraídos. Pode estar vazio se nenhum dado for encontrado.
     """
-    try:
-        # Validação de colunas essenciais
-        colunas_inscritos = ['Nome completo', 'CPF', 'Endereço de email']
-        colunas_turmas = ['Nome completo', 'Nome curto do curso']
+    lines = file_content.splitlines()
 
-        # Carrega os arquivos CSV
-        # Carrega os arquivos CSV a partir dos objetos carregados
-        df_inscritos = pd.read_csv(arquivo_inscritos)
-        df_turmas = pd.read_csv(arquivo_turmas)
+    # --- Extração dos Dados Usando Expressões Regulares ---
+    extracted_data: List[Tuple[str, str, str]] = []
+    extracted_data: List[Tuple[str, str, str, str]] = []
 
-        # Verifica se as colunas necessárias existem
-        if not all(col in df_inscritos.columns for col in colunas_inscritos):
-            raise KeyError(f"O arquivo '{arquivo_inscritos}' não contém as colunas necessárias: {colunas_inscritos}")
-            raise KeyError(f"O arquivo de inscritos não contém as colunas necessárias: {colunas_inscritos}")
-        if not all(col in df_turmas.columns for col in colunas_turmas):
-            raise KeyError(f"O arquivo '{arquivo_turmas}' não contém as colunas necessárias: {colunas_turmas}")
-            raise KeyError(f"O arquivo de turmas não contém as colunas necessárias: {colunas_turmas}")
+    # Itera sobre cada linha lida do arquivo para processamento.
+    for line in lines:
+        # Tenta encontrar o padrão do GRUPO no início da linha atual.
+        grupo_match = GRUPO_PATTERN.search(line)
 
-        # Junta os dois dataframes
-        df_merged = pd.merge(df_inscritos, df_turmas, on='Nome completo', how='inner')
+        # Se um GRUPO for encontrado nesta linha:
+        if grupo_match:
+            grupo = grupo_match.group(1)
+            rest_of_line = line[grupo_match.end():]
 
-        # Seleciona e renomeia as colunas
-        tabela_final = df_merged[colunas_inscritos + ['Nome curto do curso']]
-        tabela_final.columns = ['aluno', 'cpf', 'email', 'turma']
+            # Encontra todas as ocorrências de NOME e CPF no restante da linha.
+            for nome_cpf_match in NOME_CPF_PATTERN.finditer(rest_of_line):
+                nome = nome_cpf_match.group(1).strip()
+                cpf = nome_cpf_match.group(2).strip()
+            # Encontra todas as ocorrências de NOME, CPF e EMAIL no restante da linha.
+            for match in NOME_CPF_EMAIL_PATTERN.finditer(rest_of_line):
+                nome = match.group(1).strip()
+                cpf = match.group(2).strip()
+                email = match.group(3).strip()
+                
+                # Formatação do CPF e adição à lista em um único passo
+                formatted_cpf = cpf.zfill(11)
+                extracted_data.append((grupo, formatted_cpf, nome))
+                extracted_data.append((grupo, formatted_cpf, nome, email))
 
-        # Salva e exibe a tabela final
-        tabela_final.to_csv(arquivo_saida, index=False)
-        print(f"Tabela final gerada com sucesso em '{arquivo_saida}'!")
-        print(tabela_final)
-        return tabela_final
+    return pd.DataFrame(extracted_data, columns=COLUMNS)
 
-    except FileNotFoundError as e:
-        print(f"Erro: Arquivo não encontrado - {e.filename}", file=sys.stderr)
-        sys.exit(1)
-    except KeyError as e:
-        print(f"Erro: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Ocorreu um erro inesperado: {e}", file=sys.stderr)
-        sys.exit(1)
-        # Re-levanta a exceção para ser tratada pela interface do Streamlit
-        raise e
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Gera uma tabela final de alunos, CPFs, e-mails e turmas a partir de arquivos CSV."
+# --- Interface Streamlit: Componentes Interativos ---
+
+# Inicializa o estado da sessão para armazenar o DataFrame processado
+if 'df_processed' not in st.session_state:
+    st.session_state.df_processed = None
+
+uploaded_file = st.file_uploader("Passo 1: Carregue o arquivo .txt", type=["txt"])
+
+status_message_placeholder = st.empty()
+
+# --- Lógica de Fluxo da Aplicação ---
+# Verifica se um arquivo foi carregado pelo usuário.
+if uploaded_file is not None:
+    # Se um arquivo foi carregado, exibe uma mensagem informativa usando o placeholder de status.
+    status_message_placeholder.info(f"Arquivo **'{uploaded_file.name}'** carregado. Clique em 'Processar' para continuar.")
+
+    # Adiciona um botão à interface com o rótulo "Processar".
+    if st.button("Passo 2: Processar Arquivo"):
+        with st.spinner("Processando dados... Aguarde."):
+            try:
+                # Tenta decodificar com UTF-8, mas oferece fallback para latin-1
+                file_content = uploaded_file.getvalue().decode("utf-8")
+            except UnicodeDecodeError:
+                st.warning("Não foi possível decodificar o arquivo como UTF-8. Tentando com Latin-1...")
+                try:
+                    file_content = uploaded_file.getvalue().decode("latin-1")
+                except Exception as e:
+                    st.error(f"Falha ao ler o arquivo. Codificação não suportada. Erro: {e}")
+                    file_content = None
+            
+            if file_content:
+                st.session_state.df_processed = process_ciai_data(file_content)
+
+                if st.session_state.df_processed.empty:
+                    status_message_placeholder.warning("Processamento concluído, mas nenhum dado foi extraído. Verifique o formato do arquivo de entrada.")
+                else:
+                    status_message_placeholder.success(f"Dados processados com sucesso! {len(st.session_state.df_processed)} registros encontrados.")
+
+# Exibe os resultados se o DataFrame estiver no estado da sessão
+if st.session_state.df_processed is not None and not st.session_state.df_processed.empty:
+    st.subheader("Passo 3: Dados Extraídos e Formatados:")
+    st.dataframe(st.session_state.df_processed)
+
+    # Garante que o CSV seja gerado com codificação UTF-8 para máxima compatibilidade
+    csv_output = st.session_state.df_processed.to_csv(index=False, encoding='utf-8')
+
+    st.download_button(
+        label="Passo 4: Baixar CSV Processado",
+        data=csv_output,
+        file_name=OUTPUT_FILENAME,
+        mime="text/csv"
     )
-    parser.add_argument(
-        '--inscritos',
-        type=str,
-        default='inscritos.csv',
-        help='Caminho para o arquivo CSV de inscritos. Padrão: inscritos.csv'
-    )
-    parser.add_argument(
-        '--turmas',
-        type=str,
-        default='turmas.csv',
-        help='Caminho para o arquivo CSV de turmas. Padrão: turmas.csv'
-    )
-    parser.add_argument(
-        '--saida',
-        type=str,
-        default='tabela_final.csv',
-        help='Caminho para o arquivo CSV de saída. Padrão: tabela_final.csv'
-    )
-# --- Interface do Streamlit ---
-
-    args = parser.parse_args()
-st.set_page_config(page_title="Gerador de Tabela de Alunos", layout="wide")
-st.title("Gerador de Tabela Aluno/Turma")
-st.write("Faça o upload dos arquivos CSV de inscritos e turmas para gerar a tabela final.")
-
-    gerar_tabela_alunos(args.inscritos, args.turmas, args.saida)
-# File Uploaders na barra lateral
-st.sidebar.header("1. Carregar Arquivos")
-uploaded_inscritos = st.sidebar.file_uploader("Arquivo de Inscritos (CSV)", type=['csv'])
-uploaded_turmas = st.sidebar.file_uploader("Arquivo de Turmas (CSV)", type=['csv'])
-
-if uploaded_inscritos and uploaded_turmas:
-    st.sidebar.success("Arquivos carregados com sucesso!")
-
-    if st.button("Gerar Tabela Final"):
-        try:
-            with st.spinner("Processando os dados..."):
-                # Chama a função com os arquivos carregados
-                tabela_final_df = gerar_tabela_alunos(uploaded_inscritos, uploaded_turmas)
-
-            st.header("Resultado")
-            st.dataframe(tabela_final_df)
-
-            # Converte o DataFrame para CSV para o download
-            csv = tabela_final_df.to_csv(index=False).encode('utf-8')
-
-            st.download_button(
-               label="Baixar tabela como CSV",
-               data=csv,
-               file_name='tabela_final.csv',
-               mime='text/csv',
-            )
-
-        except KeyError as e:
-            st.error(f"Erro de Coluna: {e}. Verifique se os arquivos CSV contêm as colunas necessárias.")
-        except Exception as e:
-            st.error(f"Ocorreu um erro inesperado: {e}")
-else:
-    st.info("Por favor, carregue ambos os arquivos CSV na barra lateral para começar.")
+elif uploaded_file is None:
+    status_message_placeholder.info("Aguardando o upload do arquivo .txt.")
